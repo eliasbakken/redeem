@@ -1,5 +1,6 @@
 import replicape
 import revolve
+import recore
 
 
 def probe_all_boards(printer):
@@ -8,3 +9,5 @@ def probe_all_boards(printer):
     return
 
   revolve.probe_revolve(printer)
+
+  recore.probe_recore(printer)

@@ -23,10 +23,10 @@ License: GNU GPL v3: http://www.gnu.org/copyleft/gpl.html
 
 import time
 import logging
-from ShiftRegister import ShiftRegister
+#from ShiftRegister import ShiftRegister
 from threading import Thread
-from Alarm import Alarm
-from Key_pin import Key_pin
+from redeem.Alarm import Alarm
+from redeem.Key_pin import Key_pin
 
 
 class Stepper(object):
@@ -50,8 +50,8 @@ class Stepper(object):
     self.current_disabled = False
 
     # Set up the Shift register
-    ShiftRegister.make(8)
-    self.shift_reg = ShiftRegister.registers[shiftreg_nr]
+    #ShiftRegister.make(8)
+    #self.shift_reg = ShiftRegister.registers[shiftreg_nr]
 
     # Add a key code to the key listener
     # Steppers have an nFAULT pin, so callback on falling

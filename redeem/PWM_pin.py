@@ -25,8 +25,8 @@ import time
 import subprocess
 import os
 import logging
-import Adafruit_BBIO.PWM as PWM
-""" 
+#import Adafruit_BBIO.PWM as PWM
+"""
 """
 
 

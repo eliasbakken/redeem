@@ -26,7 +26,7 @@ import sys
 import time
 from multiprocessing import JoinableQueue
 from PWM_pin import PWM_pin
-from ShiftRegister import ShiftRegister
+#from ShiftRegister import ShiftRegister
 from threading import Thread
 from six import PY2
 
