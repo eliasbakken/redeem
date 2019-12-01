@@ -120,22 +120,23 @@ class PathPlanner:
     }, 0)
     self.prev.set_prev(None)
 
-    if pru_firmware:
-      self._init_path_planner()
-    else:
-      self.native_planner = None
+    #if pru_firmware:
+    self._init_path_planner()
+    #else:
+    #  self.native_planner = None
 
   def _init_path_planner(self):
     self.alarm_wrapper = AlarmWrapper()
     self.native_planner = PathPlannerNative(int(self.printer.move_cache_size), self.alarm_wrapper)
 
-    fw0 = self.pru_firmware.get_firmware(0)
-    fw1 = self.pru_firmware.get_firmware(1)
+    #fw0 = self.pru_firmware.get_firmware(0)
+    #fw1 = self.pru_firmware.get_firmware(1)
 
-    if fw0 is None or fw1 is None:
-      return
+    #if fw0 is None or fw1 is None:
+    #  return
 
-    self.native_planner.initPRU(fw0, fw1)
+    #self.native_planner.initPRU(fw0, fw1)
+    self.native_planner.initAR100()
 
     self.native_planner.setAxisStepsPerMeter(tuple(self.printer.steps_pr_meter))
     self.native_planner.setMaxSpeeds(tuple(self.printer.max_speeds))

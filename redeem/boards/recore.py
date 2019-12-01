@@ -108,7 +108,7 @@ def build_recore_printer(printer, revision):
   printer.end_stop_keycodes["Z1"] = 116
   printer.end_stop_keycodes["Z2"] = 117
 
-  uart = serial.Serial('/dev/ttyS2', 115200, timeout=0.1)
+  uart = serial.Serial('/dev/ttyS2', 115200, timeout=0.01)
   stepper_bank = StepperBankUart([uart], 1)
 
   printer.steppers["X"] = Stepper_TMC2209(

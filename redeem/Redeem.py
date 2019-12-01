@@ -52,6 +52,8 @@ from PathPlanner import PathPlanner
 from Gcode import Gcode
 from ColdEnd import ColdEnd
 from PruFirmware import PruFirmware
+from AR100Firmware import AR100Firmware
+from AR100Interface import AR100Interface
 from CascadingConfigParser import CascadingConfigParser
 from Printer import Printer
 from GCodeProcessor import GCodeProcessor
@@ -168,7 +170,7 @@ class Redeem:
       self.printer.end_stops[es].stops = printer.config.get('Endstops', 'end_stop_' + es + '_stops')
 
     # activate all the endstops
-    self.printer.set_active_endstops()
+    #self.printer.set_active_endstops()
 
     # Init the 5 Stepper motors (step, dir, fault, DAC channel, name)
     Stepper.printer = printer
@@ -222,8 +224,8 @@ class Redeem:
       adc = self.printer.thermistor_inputs["I"]
       self.printer.sensors.append(CurrentSensor(adc))
 
-
     # Make Mosfets, temperature sensors and extruders
+    '''
     heaters = ["E", "H", "HBP"]
     if printer.board == "revolve":
       heaters = ["E", "H", "HBP", "A"]
@@ -260,7 +262,7 @@ class Redeem:
       self.printer.heaters[e].max_temp_fall = self.printer.config.getfloat(
           'Heaters', 'max_fall_temp_' + e)
       self.printer.heaters[e].max_power = self.printer.config.getfloat('Heaters', 'max_power_' + e)
-
+    '''
     # Set default value for all fans
     for i, f in enumerate(self.printer.fans):
       f.set_value(self.printer.config.getfloat('Fans', "default-fan-{}-value".format(i)))
@@ -381,11 +383,16 @@ class Redeem:
     dirname = os.path.dirname(os.path.realpath(__file__))
 
     # Create the firmware compiler
-    pru_firmware = PruFirmware(
-        dirname + "/firmware/firmware_runtime.c", dirname + "/firmware/firmware_runtime.bin",
-        dirname + "/firmware/firmware_endstops.c", dirname + "/firmware/firmware_endstops.bin",
-        self.printer, "/usr/bin/clpru", dirname + "/firmware/AM335x_PRU.cmd",
-        dirname + "/firmware/image.cmd")
+    firmware = AR100Firmware(dirname + "/firmware/ar100/firmware_runtime.c",
+                             dirname + "/firmware/ar100/firmware_runtime.bin", self.printer)
+    loader = AR100Interface()
+    bin = dirname + "/firmware/ar100/firmware_runtime.bin"
+    with open(bin, "rb") as f:
+      loader.assert_reset()
+      loader.write_firmware(f.read())
+      loader.deassert_reset()
+      #ar100.write_pattern()
+      logging.info("Firmware written")
 
     printer.move_cache_size = printer.config.getfloat('Planner', 'move_cache_size')
     printer.print_move_buffer_wait = printer.config.getfloat('Planner', 'print_move_buffer_wait')
@@ -404,7 +411,7 @@ class Redeem:
       printer.acceleration[Printer.axis_to_index(axis)] = printer.config.getfloat(
           'Planner', 'acceleration_' + axis.lower())
 
-    self.printer.path_planner = PathPlanner(self.printer, pru_firmware)
+    self.printer.path_planner = PathPlanner(self.printer, None)
     for axis in printer.steppers.keys():
       i = Printer.axis_to_index(axis)
 

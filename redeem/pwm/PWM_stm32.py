@@ -37,7 +37,7 @@ class PWM_stm32(object):
     self.uart = uart
 
   def get_output(self, channel):
-    return PWM_stm32_Output(self, channel)
+    return PWM_stm32_Output(self.uart, channel)
 
 
 if __name__ == "__main__":

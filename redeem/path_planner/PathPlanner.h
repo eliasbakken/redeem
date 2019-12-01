@@ -151,6 +151,7 @@ public:
    * @param cacheSize Size of the movement planner cache
    */
     PathPlanner(unsigned int cacheSize, AlarmCallback& alarmCallback, PruInterface& pru);
+    PathPlanner(unsigned int cacheSize, AlarmCallback& alarmCallback, AR100Interface& ar100);
     PathPlanner(unsigned int cacheSize, AlarmCallback& alarmCallback);
 
     /**
@@ -165,6 +166,20 @@ public:
     bool initPRU(const std::string& firmware_stepper, const std::string& firmware_endstops)
     {
         return pru.initPRU(firmware_stepper, firmware_endstops);
+    }
+
+    /**
+    * @brief  Init the internal AR100 co-processors
+    * @details Init the internal AR100 co-processors with the provided firmware
+    *
+    * @param firmware_stepper The firmware for the stepper step generation, will be executed on PRU0
+    * @param firmware_endstops The firmware for the endstop checks, will be executed on PRU1
+    *
+    * @return true in case of success, false otherwise.
+    */
+    bool initAR100(const std::string& firmware)
+    {
+        return ar100.initAR100(firmware);
     }
 
     void queueSyncEvent(SyncCallback& callback, bool isBlocking = false);

@@ -58,22 +58,21 @@ class StepperBankUart(object):
 
   def _single_register_transfer(self, index, reg_addr, value, write):
     with self.lock:
-      # 40 bit messages, first byte is the address
-      # first build a no-op message to all steppers on the bus
       stepper_addr, uart = self._index_to_uart_addr(index)
 
       if write:
         to_send = self._add_crc([0x5, stepper_addr, reg_addr | 0x80] + int_to_bytes(value))
       else:
-        to_send = self._add_crc([0x5, stepper_addr, reg_addr] + int_to_bytes(value))
+        to_send = self._add_crc([0x5, stepper_addr, reg_addr])
 
+      #print("write", [hex(byte) for byte in to_send])
       uart.write("".join([chr(byte) for byte in to_send]))
+      # Discard what we just sent
+      simplex = uart.read(len(to_send))
       data = [ord(byte) for byte in uart.read(100)]
-      print data
       if write:
         return
-
-      # the output ordering is also reversed - the last stepper on the bus gets the first result in the list
+      data = data[3:7]
       self.steppers[index].update_register(reg_addr, bytes_to_int(data))
 
   def read_single_register(self, index, addr):
@@ -85,33 +84,14 @@ class StepperBankUart(object):
   def _bulk_register_transfer(self, addr, values, write):
     with self.lock:
       if write and len(values) != len(self.steppers):
-        raise RuntimeError("SPI bulk write failed - value count must match stepper count")
+        raise RuntimeError("UART bulk write failed - value count must match stepper count")
 
-      if write:
-        to_send = []
-        for index in reversed(range(len(self.steppers))):
-          value = values[index]
-          if value is not None:
-            to_send += [addr | 0x80] + int_to_bytes(value)
-          else:
-            to_send += [0] * 5
+    for index in range(len(self.steppers)):
+      if values is not None:
+        value = values[index]
+        self._single_register_transfer(index, addr, value, write)
       else:
-        to_send = [addr, 0, 0, 0, 0] * len(self.steppers)
-
-      stale_data = self.spi_bus.xfer(to_send)
-      self._update_status_from_transfer(stale_data)
-
-      if write:
-        return
-
-      data = self.spi_bus.xfer(to_send)
-      self._update_status_from_transfer(data)
-
-      for index in range(len(self.steppers)):
-        if self.steppers[index] is not None:
-          reverse_index = len(self.steppers) - index - 1
-          stepper_data = bytes_to_int(data[reverse_index * 5 + 1:(reverse_index + 1) * 5])
-          self.steppers[index].update_register(addr, stepper_data)
+        self._single_register_transfer(index, addr, 0, write)
 
   def read_all_registers(self, addr):
     self._bulk_register_transfer(addr, None, False)
@@ -142,38 +122,17 @@ c_uint = ctypes.c_uint32
 # don't let the formatter mangle these
 # yapf: disable
 
-class SPI_STATUS_bits(ctypes.Structure):
-  _fields_ = [
-      ("reset_flag", c_uint, 1),
-      ("driver_error", c_uint, 1),
-      ("sg2", c_uint, 1),
-      ("standstill", c_uint, 1),
-  ]
-
-
-class SPI_STATUS_data(ctypes.Union):
-  _fields_ = [("bits", SPI_STATUS_bits), ("register", ctypes.c_uint8)]
-
-
 class GCONF_Register_bits(ctypes.Structure):
   _fields_ = [
       ("i_scale_analog", c_uint, 1),
       ("internal_rsense", c_uint, 1),
-      ("en_pwm_mode", c_uint, 1),
-      ("enc_commutation", c_uint, 1),
+      ("en_spreadcycle", c_uint, 1),
       ("shaft", c_uint, 1),
-      ("diag0_error", c_uint, 1),
-      ("diag0_otpw", c_uint, 1),
-      ("diag0_stall", c_uint, 1),
-      ("diag1_stall", c_uint, 1),
-      ("diag1_index", c_uint, 1),
-      ("diag1_onstate", c_uint, 1),
-      ("diag1_steps_skipped", c_uint, 1),
-      ("diag0_int_pushpull", c_uint, 1),
-      ("diag1_pushpull", c_uint, 1),
-      ("small_hysteresis", c_uint, 1),
-      ("stop_enable", c_uint, 1),
-      ("direct_mode", c_uint, 1),
+      ("index_otpw", c_uint, 1),
+      ("index_step", c_uint, 1),
+      ("pdn_disable", c_uint, 1),
+      ("mstep_reg_select", c_uint, 1),
+      ("multistep_filt", c_uint, 1),
       ("test_mode", c_uint, 1),
   ]
 
@@ -193,19 +152,37 @@ class GSTAT_Register_bits(ctypes.Structure):
 class GSTAT_Register_data(ctypes.Union):
   _fields_ = [("bits", GSTAT_Register_bits), ("register", c_uint)]
 
+class IFCNT_Register_bits(ctypes.Structure):
+  _fields_ = [
+      ("uart", c_uint, 8)
+  ]
+
+class IFCNT_Register_data(ctypes.Union):
+  _fields_ = [("bits", IFCNT_Register_bits), ("register", c_uint)]
+
+class SLAVECONF_Register_bits(ctypes.Structure):
+  _fields_ = [
+      ("padding", c_uint, 8),
+      ("senddelay", c_uint, 4)
+  ]
+
+class SLAVECONF_Register_data(ctypes.Union):
+  _fields_ = [("bits", SLAVECONF_Register_bits), ("register", c_uint)]
 
 class IOIN_Register_bits(ctypes.Structure):
   _fields_ = [
+      ("enn", c_uint, 1),
+      ("0", c_uint, 1),
+      ("ms1", c_uint, 1),
+      ("ms2", c_uint, 1),
+      ("diag", c_uint, 1),
+      ("0", c_uint, 1),
+      ("pdn_uart", c_uint, 1),
       ("step", c_uint, 1),
+      ("spread_en", c_uint, 1),
       ("dir", c_uint, 1),
-      ("dcen_cfg4", c_uint, 1),
-      ("dcin_cfg5", c_uint, 1),
-      ("drv_enn_cfg6", c_uint, 1),
-      ("dco", c_uint, 1),
-      ("always_1", c_uint, 1),
-      ("dont_care", c_uint, 1),
-      ("unused", c_uint, 16),
-      ("version", c_uint, 8),
+      ("padding", c_uint, 14),
+      ("version", c_uint, 8)
   ]
 
 
@@ -216,11 +193,8 @@ class IOIN_Register_data(ctypes.Union):
 class IHOLD_IRUN_Register_bits(ctypes.Structure):
   _fields_ = [
       ("ihold", c_uint, 5),
-      ("unused1", c_uint, 3),
       ("irun", c_uint, 5),
-      ("unused2", c_uint, 3),
-      ("iholddelay", c_uint, 4),
-      ("unused3", c_uint, 12)
+      ("iholddelay", c_uint, 4)
   ]
 
 
@@ -293,18 +267,22 @@ class PWMCONF_Register_data(ctypes.Union):
 
 class DRV_STATUS_Register_bits(ctypes.Structure):
   _fields_ = [
-      ("sg_result", c_uint, 10),
-      ("reserved1", c_uint, 5),
-      ("fsactive", c_uint, 1),
-      ("cs_actual", c_uint, 5),
-      ("reserved2", c_uint, 3),
-      ("stallguard", c_uint, 1),
-      ("ot", c_uint, 1),
       ("otpw", c_uint, 1),
+      ("ot", c_uint, 1),
       ("s2ga", c_uint, 1),
       ("s2gb", c_uint, 1),
+      ("s2vsa", c_uint, 1),
+      ("s2vsb", c_uint, 1),
       ("ola", c_uint, 1),
       ("olb", c_uint, 1),
+      ("t120", c_uint, 1),
+      ("t143", c_uint, 1),
+      ("t150", c_uint, 1),
+      ("t157", c_uint, 1),
+      ("reserved1", c_uint, 4),
+      ("cs_actual", c_uint, 5),
+      ("reserved2", c_uint, 9),
+      ("stealth", c_uint, 1),
       ("stst", c_uint, 1),
   ]
 
@@ -342,21 +320,19 @@ class Stepper_TMC2209(Stepper):
     self.bank.add_stepper(bank_index, self)
     self.current_enabled = False
 
-    self.status = SPI_STATUS_data()
-
     self.gconf = Register("gconf", 0x0, "rw", GCONF_Register_data())
     self.gstat = Register("gstat", 0x01, "rc", GSTAT_Register_data())
-    self.ioin = Register("ioin", 0x04, "r", IOIN_Register_data())
+    self.ifcnt = Register("ifcnt", 0x02, "r", IFCNT_Register_data())
+    self.slaveconf = Register("slaveconf", 0x03, "w", SLAVECONF_Register_data())
+    self.ioin = Register("ioin", 0x06, "r", IOIN_Register_data())
     self.ihold_irun = Register("ihold_irun", 0x10, "w", IHOLD_IRUN_Register_data())
     self.tpowerdown = Register("tpowerdown", 0x11, "w", Generic_Register_data())
     self.tstep = Register("tstep", 0x12, "r", Generic_Register_data())
     self.tpwmthrs = Register("tpwmthrs", 0x13, "w", Generic_Register_data())
     self.tcoolthrs = Register("tcoolthrs", 0x14, "w", Generic_Register_data())
-    self.thigh = Register("thigh", 0x15, "w", Generic_Register_data())
-    self.xdirect = Register("xdirect", 0x2D, "rw", Generic_Register_data())
     self.vdcmin = Register("vdcmin", 0x33, "w", Generic_Register_data())
     self.chopconf = Register("chopconf", 0x6C, "rw", CHOPCONF_Register_data())
-    self.coolconf = Register("coolconf", 0x6D, "w", COOLCONF_Register_data())
+    self.coolconf = Register("coolconf", 0x42, "w", COOLCONF_Register_data())
     self.dcctrl = Register("dcctrl", 0x6E, "w", Generic_Register_data())
     self.drv_status = Register("drv_status", 0x6F, "r", DRV_STATUS_Register_data())
     self.pwmconf = Register("pwmconf", 0x70, "w", PWMCONF_Register_data())
@@ -364,8 +340,8 @@ class Stepper_TMC2209(Stepper):
     self.lost_steps = Register("lost_steps", 0x73, "r", Generic_Register_data())
 
     self.registers = [
-        self.gconf, self.gstat, self.ioin, self.ihold_irun, self.tpowerdown, self.tstep,
-        self.tpwmthrs, self.tcoolthrs, self.thigh, self.xdirect, self.chopconf, self.coolconf,
+        self.gconf, self.gstat, self.ifcnt, self.slaveconf, self.ioin, self.ihold_irun,
+        self.tpowerdown, self.tstep, self.tpwmthrs, self.tcoolthrs, self.chopconf, self.coolconf,
         self.drv_status, self.pwmconf, self.pwm_scale, self.lost_steps
     ]
 
@@ -374,14 +350,14 @@ class Stepper_TMC2209(Stepper):
       self.registers_by_addr[register.addr] = register
 
   def initialize_registers(self):
+    #print self.bank.read_single_register(0, 6)
     self.tpowerdown.data.register = 10
     self._write_register(self.tpowerdown)
 
-    self.gconf.data.bits.diag0_error = 1
-    self.gconf.data.bits.diag0_otpw = 1
-    # Elias observed that these are inverted from the datasheet?
-    self.gconf.data.bits.diag0_stall = 1
-    self.gconf.data.bits.diag1_stall = 1
+    self.gconf.data.bits.i_scale_analog = 0
+    self.gconf.data.bits.internal_rsense = 1
+    self.gconf.data.bits.mstep_reg_select = 1
+    self.gconf.data.bits.en_spreadcycle = 1
     self._write_register(self.gconf)
 
     self.chopconf.data.bits.vsense = 1    # note that this affects the current calculations in set_current_value
@@ -408,31 +384,40 @@ class Stepper_TMC2209(Stepper):
     errors = 0
 
     self._read_register(self.ioin)
-    if self.ioin.data.bits.version != 0x11:
+    if self.ioin.data.bits.version != 0x21:
       logging.error("sanity test failed for stepper %s - expected version %x, ioin was actually %x",
-                    self.name, 0x11, self.ioin.data.register)
+                    self.name, 0x21, self.ioin.data.bits.version)
       errors += 1
     else:
       # logging.debug("version check succeeded for stepper %s", self.name)
       pass
 
-    magic = 0x00550021 + self.bank_index
-    self.xdirect.data.register = magic
-    self._write_register(self.xdirect)
-    self._read_register(self.xdirect)
-    if self.xdirect.data.register != magic:
+    old_conf = self.pwmconf.data.register
+    magic = 0x00330021 + self.bank_index
+    self.pwmconf.data.register = magic
+    self._write_register(self.pwmconf)
+    self._read_register(self.pwmconf)
+    if self.pwmconf.data.register != magic:
       logging.error("sanity test failed for stepper %s: %x instead of %x", self.name,
-                    self.xdirect.data.register, magic)
+                    self.pwmconf.data.register, magic)
       errors += 1
-      if self.xdirect.data.register != 0:
+      if self.pwmconf.data.register != 0:
         logging.error("SANITY TEST MISMATCH FOR STEPPER %s - my index is %d, magic index is %d",
-                      self.name, self.bank_index, self.xdirect.data.register - 0x12345678)
+                      self.name, self.bank_index, self.pwmconf.data.register - 0x12345678)
     else:
       # logging.debug("sanity test succeeded for stepper %s", self.name)
       pass
 
-    self.xdirect.data.register = 0
-    self._write_register(self.xdirect)
+    # Reset to the old config
+    self._read_register(self.ifcnt)
+    before = self.ifcnt.data.register
+    self.pwmconf.data.register = old_conf
+    self._write_register(self.pwmconf)
+    self._read_register(self.ifcnt)
+    after = self.ifcnt.data.register
+    if after - before != 1:
+      logging.error("SANITY TEST MISMATCH FOR STEPPER %s - before is %d, after is %d", self.name,
+                    before, after)
 
     self.step_pin.disable()
     self.dir_pin.disable()
@@ -569,20 +554,25 @@ class Stepper_TMC2209(Stepper):
 
     result = "{:x} to {:x} ".format(old, new)
 
-    if change.bits.sg_result:
-      result += "stallguard: {} -> {} ".format(self.drv_status.data.bits.sg_result,
-                                               new_reg.bits.sg_result)
-    result += self.get_bit_change(change.bits.fsactive, new_reg.bits.fsactive, "fullstep ")
     if change.bits.cs_actual:
       result += "current_scale: {} -> {} ".format(self.drv_status.data.bits.cs_actual,
                                                   new_reg.bits.cs_actual)
-    result += self.get_bit_change(change.bits.stallguard, new_reg.bits.stallguard, "stall ")
-    result += self.get_bit_change(change.bits.ot, new_reg.bits.ot, "overtemperature ")
+
     result += self.get_bit_change(change.bits.otpw, new_reg.bits.otpw, "overtemperature_warn ")
+    result += self.get_bit_change(change.bits.ot, new_reg.bits.ot, "overtemperature ")
+    result += self.get_bit_change(change.bits.s2vsa, new_reg.bits.s2ga,
+                                  "low side short indicator phase A ")
+    result += self.get_bit_change(change.bits.s2vsb, new_reg.bits.s2ga,
+                                  "low side short indicator phase B ")
     result += self.get_bit_change(change.bits.s2ga, new_reg.bits.s2ga, "phase_A_short ")
     result += self.get_bit_change(change.bits.s2gb, new_reg.bits.s2gb, "phase_B_short ")
     result += self.get_bit_change(change.bits.ola, new_reg.bits.ola, "open_load_A ")
     result += self.get_bit_change(change.bits.olb, new_reg.bits.olb, "open_load_B ")
+    result += self.get_bit_change(change.bits.t120, new_reg.bits.ot, "120 C comparator ")
+    result += self.get_bit_change(change.bits.t143, new_reg.bits.ot, "143 C comparator ")
+    result += self.get_bit_change(change.bits.t150, new_reg.bits.ot, "150 C comparator ")
+    result += self.get_bit_change(change.bits.t157, new_reg.bits.ot, "157 C comparator ")
+    result += self.get_bit_change(change.bits.stst, new_reg.bits.stealth, "stealth ")
     result += self.get_bit_change(change.bits.stst, new_reg.bits.stst, "standstill ")
 
     return result
@@ -651,8 +641,8 @@ class Stepper_TMC2209(Stepper):
     hold_scale = max(0, int(current_scale * 0.33 + 0.5))
     logging.debug("converted current %f to scale %d run, %d hold", i_rms, current_scale, hold_scale)
 
-    self.ihold_irun.data.bits.irun = current_scale
-    self.ihold_irun.data.bits.ihold = hold_scale
+    self.ihold_irun.data.bits.irun = 1    #current_scale
+    self.ihold_irun.data.bits.ihold = 1    #hold_scale
     self._write_register(self.ihold_irun)
 
   def set_disabled(self, force_update=False):

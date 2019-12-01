@@ -25,7 +25,7 @@ License: GNU GPL v3: http://www.gnu.org/copyleft/gpl.html
 import logging
 import re
 from evdev import InputDevice, ecodes
-from PruInterface import *
+from AR100Interface import *
 from select import select
 from threading import Thread
 
@@ -100,7 +100,7 @@ class EndStop:
 
   def read_value(self):
     """ Read the current endstop value from GPIO using PRU1 """
-    state = PruInterface.get_shared_long(0)
+    state = 0    #AR100Interface.get_shared_long(0)
     self.hit = bool(state & self.condition_bit)
 
   def callback(self):
@@ -118,7 +118,7 @@ if __name__ == "__main__":
   import time
 
   while True:
-    state = PruInterface.get_shared_long(0)
+    state = AR100Interface.get_shared_long(0)
     print(bin(state) + "  ", )
     if bool(state & (1 << 0)):
       print("X1", )
